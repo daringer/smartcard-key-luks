@@ -4,6 +4,9 @@
 
 PUBKEY=$1
 GNUPGHOME="/etc/cryptsetup-initramfs"
+TMPKEY='/dev/shm/tmpkey'
+
+. /lib/cryptsetup/functions
 
 if [ ! -e "$PUBKEY" ]; then
   echo "ERROR: This script requires a GPG public key to encrypt your LUKS secret against"
@@ -12,19 +15,35 @@ if [ ! -e "$PUBKEY" ]; then
 fi
 
 # Discover the root LUKS device
-ROOT_LUKS=`grep ' / ' /etc/fstab | cut -f1 -d ' '| sed 's/\/dev\/mapper\///'`
-ROOT_DEV=` grep $ROOT_LUKS /etc/crypttab | tail -n1 | cut -f2 -d ' '`
-if echo $ROOT_DEV | grep -q 'UUID'; then
+ROOT_LUKS=`grep -v '^#' /etc/fstab | col | egrep '[[:space:]]+\/[[:space:]]+' | cut -f1 -d ' '| sed 's/\/dev\/mapper\///'`
+crypttab_find_entry $ROOT_LUKS
+ROOT_DEV=$CRYPTTAB_SOURCE
+
+case $ROOT_DEV in
+UUID=*)
   UUID=`echo $ROOT_DEV | cut -f2 -d '='`
   ROOT_DEV_FULL="/dev/disk/by-uuid/$UUID"
-fi
+  ;;
+LABEL=*)
+  LABEL=`echo $ROOT_DEV | cut -f2 -d '='`
+  ROOT_DEV_FULL="/dev/disk/by-label/$LABEL"
+  ;;
+PARTLABEL=*)
+  PARTLABEL=`echo $ROOT_DEV | cut -f2 -d '='`
+  ROOT_DEV_FULL="/dev/disk/by-partlabel/$PARTLABEL"
+  ;;
+PARTUUID=*)
+  PARTUUID=`echo $ROOT_DEV | cut -f2 -d '='`
+  ROOT_DEV_FULL="/dev/disk/by-uuid/$PARTUUID"
+  ;;
+esac
 
 if [ ! -e "$ROOT_DEV_FULL" ]; then
   echo No valid root device found! Aborting!
   exit 1
 fi
 
-if dpkg -l scdaemon | egrep -q '^ii'; then
+if dpkg-query -l 'scdaemon' | egrep -q '^ii'; then
   echo "scdaemon installed"
 else
   echo "ERROR: scdaemon package not installed. The scdaemon package is required to access the OpenPGP smart card"
@@ -41,17 +60,17 @@ if [ $? -ne 0 ]; then
 fi
 
 gpg --homedir ${GNUPGHOME} --import $PUBKEY
-gpg --homedir ${GNUPGHOME} --export --export-options export-minimal --armor > ${GNUPGHOME}/pubring.gpg
-GPG_RECIPIENT=`gpg --homedir ${GNUPGHOME} --card-status --with-colons | grep '^fpr:' | cut -f2 -d':'`
-echo -e "5\ny\n" | gpg --homedir ${GNUPGHOME} --command-fd 0 --expert --edit-key $GPG_RECIPIENT trust
+gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${GNUPGHOME}/pubring.gpg
+GPG_RECIPIENT=`gpg --homedir="$GNUPGHOME" --with-colons --list-keys \
+    | sed -nr 's/^pub(:[^:]*){3}:([0-9a-fA-F]+)(:[^:]*){6}:[^:]*[eE].*/-r \2/p'`
 
 # Generate the LUKS key if it doesn't exist
 if [ -e "${GNUPGHOME}/cryptkey.gpg" ]; then
   echo "${GNUPGHOME}/cryptkey.gpg exists, skipping key generation"
 else
 # generate secret key
-  dd if=/dev/random bs=1 count=256 >/root/tmpkey
-  gpg --homedir ${GNUPGHOME} -o ${GNUPGHOME}/cryptkey.gpg -r $GPG_RECIPIENT --yes --encrypt /root/tmpkey
+  dd if=/dev/random bs=1 count=256 >${TMPKEY}
+  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${GNUPGHOME}/cryptkey.gpg -r $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
   if [ $? -ne 0 ]; then
     echo "Encryption of ${GNUPGHOME}/cryptkey.gpg failed! Aborting!"
     exit 1
@@ -66,14 +85,17 @@ else
   fi
   
   echo -e "\n\nAdding your new secret key to LUKS using any existing passphrase."
-  cryptsetup luksAddKey $ROOT_DEV_FULL /root/tmpkey
-  shred -u /root/tmpkey
+  cryptsetup luksAddKey $ROOT_DEV_FULL ${TMPKEY}
+  shred -u ${TMPKEY}
 fi
 
-if egrep -q "^$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc" /etc/crypttab; then
+crypttab_find_entry $ROOT_LUKS
+if [ "$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc" == \
+  "$CRYPTTAB_NAME $CRYPTTAB_SOURCE $CRYPTTAB_KEY $CRYPTTAB_OPTIONS" ]; then
   echo "/etc/crypttab already updated, skipping"
 else
-  perl -pi -e "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc|" /etc/crypttab
+  cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
+  mv /etc/crypttab.tmp /etc/crypttab
   update-initramfs -u
 fi
 
