@@ -62,7 +62,7 @@ chmod 700 $GNUPGHOME
 gpg --homedir ${GNUPGHOME} --card-status
 if [ $? -ne 0 ]; then
   echo Insert your OpenPGP smart card and press Enter
-  read
+  read _
   gpg --homedir ${GNUPGHOME} --card-status || exit 1
 fi
 
