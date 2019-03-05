@@ -84,8 +84,14 @@ else
     exit 1
   fi
   
-  echo -e "\n\nAdding your new secret key to LUKS using any existing passphrase."
+  echo -e "\n\nAdding your new secret key to LUKS.\nWhen prompted, type in your OLD passphrase to unlock the disk."
   cryptsetup luksAddKey $ROOT_DEV_FULL ${TMPKEY}
+  if [ $? -ne 0 ]; then
+    echo "Adding new key to LUKS failed! Aborting!"
+    shred -u ${TMPKEY}
+    shred -u ${GNUPGHOME}/cryptkey.gpg
+    exit 1
+  fi
   shred -u ${TMPKEY}
 fi
 
