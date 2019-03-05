@@ -70,9 +70,11 @@ if [ -e "${GNUPGHOME}/cryptkey.gpg" ]; then
 else
 # generate secret key
   dd if=/dev/random bs=1 count=256 >${TMPKEY}
-  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${GNUPGHOME}/cryptkey.gpg -r $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
+  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${GNUPGHOME}/cryptkey.gpg $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
   if [ $? -ne 0 ]; then
     echo "Encryption of ${GNUPGHOME}/cryptkey.gpg failed! Aborting!"
+    shred -u ${TMPKEY}
+    shred -u ${GNUPGHOME}/cryptkey.gpg
     exit 1
   fi
   
@@ -81,6 +83,8 @@ else
   
   if [ $? -ne 0 ]; then
     echo "Decryption test for ${GNUPGHOME}/cryptkey.gpg failed! Aborting!"
+    shred -u ${TMPKEY}
+    shred -u ${GNUPGHOME}/cryptkey.gpg
     exit 1
   fi
   
