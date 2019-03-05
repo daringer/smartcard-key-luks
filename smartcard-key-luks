@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Copyright (c) 2019 Purism SPC
 
@@ -71,7 +71,7 @@ gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${CRYPTHOM
 GPG_RECIPIENT=`gpg --homedir="$GNUPGHOME" --with-colons --list-keys \
     | sed -nr 's/^pub(:[^:]*){3}:([0-9a-fA-F]+)(:[^:]*){6}:[^:]*[eE].*/-r \2/p'`
 
-if [ "$GPG_RECIPIENT" == "" ]; then
+if [ "$GPG_RECIPIENT" = "" ]; then
   echo "ERROR: No GPG keys found in keyring"
   exit 1
 fi
@@ -112,7 +112,7 @@ else
 fi
 
 crypttab_find_entry $ROOT_LUKS
-if [ "${CRYPTHOME}/cryptkey.gpg" == "$CRYPTTAB_KEY" ]; then
+if [ "${CRYPTHOME}/cryptkey.gpg" = "$CRYPTTAB_KEY" ]; then
   echo "/etc/crypttab already updated, skipping"
 else
   cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV ${CRYPTHOME}/cryptkey.gpg ${CRYPTTAB_OPTIONS},keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
