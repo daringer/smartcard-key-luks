@@ -4,7 +4,10 @@
 
 PUBKEY=$1
 GNUPGHOME="/etc/cryptsetup-initramfs"
-TMPKEY='/dev/shm/tmpkey'
+TMPDIR=`mktemp --tmpdir=/dev/shm --directory`
+TMPKEY="${TMPDIR}/tmpkey"
+ROOT_DEV=""
+ROOT_DEV_FULL=""
 
 . /lib/cryptsetup/functions
 
@@ -64,6 +67,11 @@ gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${GNUPGHOM
 GPG_RECIPIENT=`gpg --homedir="$GNUPGHOME" --with-colons --list-keys \
     | sed -nr 's/^pub(:[^:]*){3}:([0-9a-fA-F]+)(:[^:]*){6}:[^:]*[eE].*/-r \2/p'`
 
+if [ "$GPG_RECIPIENT" == "" ]; then
+  echo "ERROR: No GPG keys found in keyring"
+  exit 1
+fi
+
 # Generate the LUKS key if it doesn't exist
 if [ -e "${GNUPGHOME}/cryptkey.gpg" ]; then
   echo "${GNUPGHOME}/cryptkey.gpg exists, skipping key generation"
@@ -100,11 +108,10 @@ else
 fi
 
 crypttab_find_entry $ROOT_LUKS
-if [ "$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc" == \
-  "$CRYPTTAB_NAME $CRYPTTAB_SOURCE $CRYPTTAB_KEY $CRYPTTAB_OPTIONS" ]; then
+if [ "$GNUPGHOME/cryptkey.gpg" == "$CRYPTTAB_KEY" ]; then
   echo "/etc/crypttab already updated, skipping"
 else
-  cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg luks,keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
+  cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg ${CRYPTTAB_OPTIONS},keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
   mv /etc/crypttab.tmp /etc/crypttab
   update-initramfs -u
 fi
