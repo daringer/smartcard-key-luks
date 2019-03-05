@@ -3,9 +3,10 @@
 # Copyright (c) 2019 Purism SPC
 
 PUBKEY=$1
-GNUPGHOME="/etc/cryptsetup-initramfs"
 TMPDIR=`mktemp --tmpdir=/dev/shm --directory`
 TMPKEY="${TMPDIR}/tmpkey"
+GNUPGHOME="${TMPDIR}"
+CRYPTHOME="/etc/cryptsetup-initramfs"
 ROOT_DEV=""
 ROOT_DEV_FULL=""
 
@@ -39,6 +40,9 @@ PARTUUID=*)
   PARTUUID=`echo $ROOT_DEV | cut -f2 -d '='`
   ROOT_DEV_FULL="/dev/disk/by-uuid/$PARTUUID"
   ;;
+*)
+  ROOT_DEV_FULL=$ROOT_DEV
+  ;;
 esac
 
 if [ ! -e "$ROOT_DEV_FULL" ]; then
@@ -63,7 +67,7 @@ if [ $? -ne 0 ]; then
 fi
 
 gpg --homedir ${GNUPGHOME} --import $PUBKEY
-gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${GNUPGHOME}/pubring.gpg
+gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${CRYPTHOME}/pubring.gpg
 GPG_RECIPIENT=`gpg --homedir="$GNUPGHOME" --with-colons --list-keys \
     | sed -nr 's/^pub(:[^:]*){3}:([0-9a-fA-F]+)(:[^:]*){6}:[^:]*[eE].*/-r \2/p'`
 
@@ -73,26 +77,26 @@ if [ "$GPG_RECIPIENT" == "" ]; then
 fi
 
 # Generate the LUKS key if it doesn't exist
-if [ -e "${GNUPGHOME}/cryptkey.gpg" ]; then
-  echo "${GNUPGHOME}/cryptkey.gpg exists, skipping key generation"
+if [ -e "${CRYPTHOME}/cryptkey.gpg" ]; then
+  echo "${CRYPTHOME}/cryptkey.gpg exists, skipping key generation"
 else
 # generate secret key
   dd if=/dev/random bs=1 count=256 >${TMPKEY}
-  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${GNUPGHOME}/cryptkey.gpg $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
+  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${CRYPTHOME}/cryptkey.gpg $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
   if [ $? -ne 0 ]; then
-    echo "Encryption of ${GNUPGHOME}/cryptkey.gpg failed! Aborting!"
+    echo "Encryption of ${CRYPTHOME}/cryptkey.gpg failed! Aborting!"
     shred -u ${TMPKEY}
-    shred -u ${GNUPGHOME}/cryptkey.gpg
+    shred -u ${CRYPTHOME}/cryptkey.gpg
     exit 1
   fi
   
   # test decryption
-  GNUPGHOME=$GNUPGHOME /lib/cryptsetup/scripts/decrypt_gnupg-sc ${GNUPGHOME}/cryptkey.gpg > /dev/null
+  GNUPGHOME=$GNUPGHOME /lib/cryptsetup/scripts/decrypt_gnupg-sc ${CRYPTHOME}/cryptkey.gpg > /dev/null
   
   if [ $? -ne 0 ]; then
-    echo "Decryption test for ${GNUPGHOME}/cryptkey.gpg failed! Aborting!"
+    echo "Decryption test for ${CRYPTHOME}/cryptkey.gpg failed! Aborting!"
     shred -u ${TMPKEY}
-    shred -u ${GNUPGHOME}/cryptkey.gpg
+    shred -u ${CRYPTHOME}/cryptkey.gpg
     exit 1
   fi
   
@@ -101,17 +105,17 @@ else
   if [ $? -ne 0 ]; then
     echo "Adding new key to LUKS failed! Aborting!"
     shred -u ${TMPKEY}
-    shred -u ${GNUPGHOME}/cryptkey.gpg
+    shred -u ${CRYPTHOME}/cryptkey.gpg
     exit 1
   fi
   shred -u ${TMPKEY}
 fi
 
 crypttab_find_entry $ROOT_LUKS
-if [ "$GNUPGHOME/cryptkey.gpg" == "$CRYPTTAB_KEY" ]; then
+if [ "${CRYPTHOME}/cryptkey.gpg" == "$CRYPTTAB_KEY" ]; then
   echo "/etc/crypttab already updated, skipping"
 else
-  cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV $GNUPGHOME/cryptkey.gpg ${CRYPTTAB_OPTIONS},keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
+  cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV ${CRYPTHOME}/cryptkey.gpg ${CRYPTTAB_OPTIONS},keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
   mv /etc/crypttab.tmp /etc/crypttab
   update-initramfs -u
 fi
