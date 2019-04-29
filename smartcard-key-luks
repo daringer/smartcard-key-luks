@@ -117,8 +117,9 @@ if [ "${CRYPTHOME}/cryptkey.gpg" = "$CRYPTTAB_KEY" ]; then
 else
   cat /etc/crypttab | sed "s|^$ROOT_LUKS .*|$ROOT_LUKS $ROOT_DEV ${CRYPTHOME}/cryptkey.gpg ${CRYPTTAB_OPTIONS},keyscript=decrypt_gnupg-sc|" > /etc/crypttab.tmp
   mv /etc/crypttab.tmp /etc/crypttab
-  update-initramfs -u
 fi
+
+update-initramfs -u
 
 # patch grub config files
 perl -pi -e 's/^GRUB_CMDLINE_LINUX_DEFAULT=(.*) splash/GRUB_CMDLINE_LINUX_DEFAULT=\1 nosplash noresume loglevel=3/' /etc/default/grub
