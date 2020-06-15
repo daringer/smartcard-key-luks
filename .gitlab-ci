@@ -1,0 +1,12 @@
+# build on PureOS byzantium
+default:   image: pureos/byzantium:latest
+
+# Update packages
+before_script:
+  - DEBIAN_FRONTEND=noninteractive apt -yqq update
+  - DEBIAN_FRONTEND=noninteractive apt -y install build-essential devscripts 
+
+build:
+  script: debuild -us -uc
+  tags:
+    - byzantium

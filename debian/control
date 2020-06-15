@@ -1,0 +1,14 @@
+Source: smartcard-key-luks
+Priority: optional
+Maintainer: Adrian Alves <adrian.alves@puri.sm>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.1.2
+Section: net
+Homepage: 
+
+Package: smartcard-key-luks
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}, bash
+Description: OpenPGP smartcard setup with Linux boot
+ OpenPGP smartcard setup with Linux boot 

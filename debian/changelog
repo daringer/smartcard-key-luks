@@ -1,0 +1,5 @@
+smartcard-key-luks (1.0.0-1~PureOS11) byzantium; urgency=medium
+
+  * Initial release
+
+ -- Adrian Alves <adrian.alves@puri.sm>  Mon, 18 Nov 2019 13:14:07 +0300
