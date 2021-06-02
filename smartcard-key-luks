@@ -1,8 +1,13 @@
 #!/bin/sh
 
 # Copyright (c) 2019 Purism SPC
+# Adapted by Nitrokey (Markus Meissner) in 2021
 
-PUBKEY=$1
+
+ROOT_LUKS=$1
+shift
+PUBKEYS=$@
+
 TMPDIR=`mktemp --tmpdir=/dev/shm --directory`
 TMPKEY="${TMPDIR}/tmpkey"
 GNUPGHOME="${TMPDIR}"
@@ -12,15 +17,24 @@ ROOT_DEV_FULL=""
 
 . /lib/cryptsetup/functions
 
-if [ ! -e "$PUBKEY" ]; then
-  echo "ERROR: This script requires a GPG public key to encrypt your LUKS secret against"
-  echo "Usage: $0 <gpg_public_key.asc>"
-  exit 1
+for pb in $PUBKEYS
+do
+  if [ ! -e "$pb" ]; then
+    echo "ERROR: This script requires at least one GPG public key to encrypt your LUKS secret against"
+    echo "Usage: $0 <root-device-name> <gpg_public_key.asc> [<gpg_public_key.asc> ... ]"
+    exit 1
+  fi
+done
+
+# discover entry
+crypttab_find_entry $ROOT_LUKS
+if [ "$?" = "1" ]; then
+    echo "ERROR: This script requires the (luks encrypted) root device as 1st argument"
+    echo "ERROR: could not find '${ROOT_LUKS}' inside /etc/crypttab"
+    echo "Usage: $0 <root-device-name> <gpg_public_key.asc> [<gpg_public_key.asc> ... ]"
+    exit 1
 fi
 
-# Discover the root LUKS device
-ROOT_LUKS=`grep -v '^#' /etc/fstab | col | egrep '[[:space:]]+\/[[:space:]]+' | cut -f1 -d ' '| sed 's/\/dev\/mapper\///'`
-crypttab_find_entry $ROOT_LUKS
 ROOT_DEV=$CRYPTTAB_SOURCE
 
 case $ROOT_DEV in
@@ -59,15 +73,15 @@ fi
   
 chmod 700 $GNUPGHOME
 # create cryptfs GPG home dir
-gpg --homedir ${GNUPGHOME} --card-status
+gpg2 --homedir ${GNUPGHOME} --card-status
 if [ $? -ne 0 ]; then
   echo Insert your OpenPGP smart card and press Enter
   read _
-  gpg --homedir ${GNUPGHOME} --card-status || exit 1
+  gpg2 --homedir ${GNUPGHOME} --card-status || exit 1
 fi
 
-gpg --homedir ${GNUPGHOME} --import $PUBKEY
-gpg --homedir ${GNUPGHOME} --export --export-options export-minimal > ${CRYPTHOME}/pubring.gpg
+gpg2 --homedir ${GNUPGHOME} --import $PUBKEYS
+gpg2 --homedir ${GNUPGHOME} --export --export-options export-minimal > ${CRYPTHOME}/pubring.gpg
 GPG_RECIPIENT=`gpg --homedir="$GNUPGHOME" --with-colons --list-keys \
     | sed -nr 's/^pub(:[^:]*){3}:([0-9a-fA-F]+)(:[^:]*){6}:[^:]*[eE].*/-r \2/p'`
 
@@ -82,7 +96,7 @@ if [ -e "${CRYPTHOME}/cryptkey.gpg" ]; then
 else
 # generate secret key
   dd if=/dev/random bs=1 count=256 >${TMPKEY}
-  gpg --homedir ${GNUPGHOME} --trust-model=always -o ${CRYPTHOME}/cryptkey.gpg $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
+  gpg2 --homedir ${GNUPGHOME} --trust-model=always -o ${CRYPTHOME}/cryptkey.gpg $GPG_RECIPIENT --yes --encrypt ${TMPKEY}
   if [ $? -ne 0 ]; then
     echo "Encryption of ${CRYPTHOME}/cryptkey.gpg failed! Aborting!"
     shred -u ${TMPKEY}
