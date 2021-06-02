@@ -44,7 +44,7 @@ From this point you might want to do the following things:
 * change the keys' PINs: `gpg --change-pin`
 * change the luks passphrase to something very secure: `sudo cryptsetup luksChangeKey /dev/nvme0n1p3`
   **keep in mind that the ubuntu-disks-gui passphrase change will not work after setting up security keys, you have to use this method to change the passphrase**
-
+* if you would like to set up a new set of keys you'll have to remove the last keyfile from the luks keys first: `sudo cryptsetup luksRemoveKey /etc/path/to/your.key`, afterwards delete the keyfile itself and restart the procedure above (the keyfile is to be taken from `/etc/crypttab`. The referenced script uses: `/etc/cryptsetup-initramfs/cryptkey.gpg`.
 
 
 
