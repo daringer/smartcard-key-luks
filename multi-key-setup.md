@@ -1,5 +1,5 @@
 Setup Multiple Keys for LUKS
-###############################
+----------------------------
 
 Make sure you have all the needed packages installed: 
 ```
