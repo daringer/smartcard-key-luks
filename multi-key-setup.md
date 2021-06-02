@@ -43,6 +43,7 @@ From this point you might want to do the following things:
 
 * change the keys' PINs: `gpg --change-pin`
 * change the luks passphrase to something very secure: `sudo cryptsetup luksChangeKey /dev/nvme0n1p3`
+  **keep in mind that the ubuntu-disks-gui passphrase change will not work after setting up security keys, you have to use this method to change the passphrase**
 
 
 
