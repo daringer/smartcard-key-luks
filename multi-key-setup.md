@@ -9,6 +9,7 @@ $ sudo apt install scdaemon opensc gnupg2
 1. Generate an arbitrary number of gpg keys, e.g. like this:
 ```
 $ gpg --edit-card
+admin
 factory-reset
 name
 generate
